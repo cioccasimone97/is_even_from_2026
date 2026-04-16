@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "is_even_from_2026"
+version = "2026.1.1"
+description = "Controllo parità definitivo."
+readme = "README.md"
+requires-python = ">=3.8"
