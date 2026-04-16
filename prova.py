@@ -9,9 +9,9 @@ def test_is_even(number):
         
         durata = (end_time - start_time) * 1000
         
-        print(f"Numero: {number:<15} | Pari: {str(risultato):<10} | Tempo: {durata:>8.2f} ms")
+        print(f"Number: {number:<15} | Even: {str(risultato):<10} | Time: {durata:>8.2f} ms")
     except Exception as e:
-        print(f"Errore durante il test di {number}: {e}")
+        print(f"Error during testing of {number}: {e}")
 
 # --- TEST ---
 
