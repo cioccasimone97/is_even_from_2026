@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor
 from is_even_from_2026.config_generator import step, files_to_generate, files_x_folder
 import subprocess
 import sys
+import argparse
 
 def generate_single_module(params):
     """
@@ -59,7 +60,7 @@ def get_stats(base_path):
                     
     return total_files, max_num
 
-def generate_progressive_modules():
+def generate_progressive_modules(do_commit=False):
     base_folder = os.path.join("is_even_from_2026", "number_modules")
     
     # Get current status from existing files
@@ -88,7 +89,8 @@ def generate_progressive_modules():
             print(result)
     
     #Auto-push
-    git_automatic_push(base_folder)
+    if do_commit:
+        git_automatic_push(base_folder)
 
 def git_automatic_push(folder):
     # Get current status from existing files
@@ -105,4 +107,8 @@ def git_automatic_push(folder):
         print(f"❌ Errore Git: {e}")
 
 if __name__ == "__main__":
-    generate_progressive_modules()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--commit", action="store_true")
+    args = parser.parse_args()
+    
+    generate_progressive_modules(do_commit=args.commit)
