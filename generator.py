@@ -5,12 +5,18 @@ from concurrent.futures import ProcessPoolExecutor
 from config_generator import step, files_to_generate, files_x_folder
 
 def generate_single_module(params):
-    """Generate the Matryoshka structure: OuterZip -> InnerZip -> Number.py"""
-    start, end, folder = params
+    """
+    Generate the Matryoshka structure: Subfolder -> OuterZip -> InnerZip -> Number.py
+    """
+    start, end, target_subfolder = params
     base_name = f"{start}"
     py_file = f"{base_name}.py"
     zip_name = f"{base_name}.zip"
-    final_zip_path = os.path.join(folder, zip_name)
+    
+    # Ensure the specific numbered subfolder exists
+    os.makedirs(target_subfolder, exist_ok=True)
+    
+    final_zip_path = os.path.join(target_subfolder, zip_name)
     
     # --- 1. Generate the content of the .py file ---
     py_buffer = [f"def is_even(number: int) -> bool:\n"]
@@ -29,40 +35,52 @@ def generate_single_module(params):
     with zipfile.ZipFile(final_zip_path, "w", zipfile.ZIP_DEFLATED) as outer_zf:
         outer_zf.writestr(zip_name, inner_zip_bytes)
     
-    return f"✅ Matryoshka created: {final_zip_path} (contains {zip_name} -> {py_file})"
+    return f"✅ Matryoshka created: {final_zip_path}"
 
-def find_last_number(folder):
-    """Find the highest number among the existing .zip files."""
-    if not os.path.exists(folder) or not os.listdir(folder):
-        return -step 
+def get_stats(base_path):
+    """
+    Scan subfolders to find the total count of .zip files and the highest number used.
+    """
+    total_files = 0
+    max_num = -step
     
-    files = os.listdir(folder)
-    numbers = []
-    for f in files:
-        if f.endswith(".zip"):
-            name_without_ext = f.replace(".zip", "")
-            if name_without_ext.isdigit():
-                numbers.append(int(name_without_ext))
-    
-    return max(numbers) if numbers else -step
+    if not os.path.exists(base_path):
+        return 0, max_num
+
+    for root, dirs, files in os.walk(base_path):
+        for f in files:
+            if f.endswith(".zip"):
+                total_files += 1
+                name_without_ext = f.replace(".zip", "")
+                if name_without_ext.isdigit():
+                    max_num = max(max_num, int(name_without_ext))
+                    
+    return total_files, max_num
 
 def generate_progressive_modules():
-    folder = os.path.join("is_even_from_2026", "number_modules")
-    os.makedirs(folder, exist_ok=True)
+    base_folder = os.path.join("is_even_from_2026", "number_modules")
     
-    last_start = find_last_number(folder)
-    next_start = last_start + step
+    # Get current status from existing files
+    total_existing, last_val = get_stats(base_folder)
+    next_start = last_val + step
     
     tasks = []
     for i in range(files_to_generate):
         start = next_start + (i * step)
         end = start + step
-        tasks.append((start, end, folder))
+        
+        # Determine folder index: (Current total + i) divided by limit per folder
+        folder_index = (total_existing + i) // files_x_folder
+        target_subfolder = os.path.join(base_folder, str(folder_index))
+        
+        tasks.append((start, end, target_subfolder))
 
-    print(f"📂 Target folder: {folder}")
-    print(f"🚀 Resuming from: {next_start}")
-    print(f"📦 Generating Matryoshka (Zip-in-Zip)...")
+    print(f"📂 Base folder: {base_folder}")
+    print(f"🚀 Resuming from number: {next_start}")
+    print(f"📦 Threshold: {files_x_folder} files per subfolder")
+    print(f"🛠️  Generating {files_to_generate} new modules...")
 
+    # Process tasks using multi-processing
     with ProcessPoolExecutor(max_workers=None) as executor:
         for result in executor.map(generate_single_module, tasks):
             print(result)
