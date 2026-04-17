@@ -2,6 +2,7 @@ import os
 import zipfile
 import io
 from concurrent.futures import ProcessPoolExecutor
+from config_generator import step, files_to_generate, files_x_folder
 
 def generate_single_module(params):
     """Generate the Matryoshka structure: OuterZip -> InnerZip -> Number.py"""
@@ -33,7 +34,7 @@ def generate_single_module(params):
 def find_last_number(folder):
     """Find the highest number among the existing .zip files."""
     if not os.path.exists(folder) or not os.listdir(folder):
-        return -1_000_000 
+        return -step 
     
     files = os.listdir(folder)
     numbers = []
@@ -43,14 +44,11 @@ def find_last_number(folder):
             if name_without_ext.isdigit():
                 numbers.append(int(name_without_ext))
     
-    return max(numbers) if numbers else -1_000_000
+    return max(numbers) if numbers else -step
 
 def generate_progressive_modules():
     folder = os.path.join("is_even_from_2026", "number_modules")
     os.makedirs(folder, exist_ok=True)
-    
-    step = 1_000_000
-    files_to_generate = 2000 
     
     last_start = find_last_number(folder)
     next_start = last_start + step
