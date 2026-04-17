@@ -2,7 +2,7 @@ import os
 import zipfile
 import io
 from concurrent.futures import ProcessPoolExecutor
-from config_generator import step, files_to_generate, files_x_folder
+from is_even_from_2026.config_generator import step, files_to_generate, files_x_folder
 
 def generate_single_module(params):
     """
