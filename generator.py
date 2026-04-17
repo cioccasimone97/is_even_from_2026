@@ -3,6 +3,8 @@ import zipfile
 import io
 from concurrent.futures import ProcessPoolExecutor
 from is_even_from_2026.config_generator import step, files_to_generate, files_x_folder
+import subprocess
+import sys
 
 def generate_single_module(params):
     """
@@ -84,6 +86,23 @@ def generate_progressive_modules():
     with ProcessPoolExecutor(max_workers=None) as executor:
         for result in executor.map(generate_single_module, tasks):
             print(result)
+    
+    #Auto-push
+    git_automatic_push(base_folder)
+
+def git_automatic_push(folder):
+    # Get current status from existing files
+    _, max_val = get_stats(folder)
+    messaggio = f"added {max_val}"
+    
+    try:
+        print("\n--- 🤖 Inizio sincronizzazione Git ---")
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", messaggio], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print("✅ Repository aggiornato con successo!")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Errore Git: {e}")
 
 if __name__ == "__main__":
     generate_progressive_modules()
