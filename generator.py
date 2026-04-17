@@ -6,6 +6,8 @@ from is_even_from_2026.config_generator import step, files_to_generate, files_x_
 import subprocess
 import sys
 import argparse
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def generate_single_module(params):
     """
@@ -61,9 +63,8 @@ def get_stats(base_path):
     return total_files, max_num
 
 def generate_progressive_modules(do_commit=False):
+    """Main logic to manage multiprocessing generation and Git sync."""
     base_folder = os.path.join("is_even_from_2026", "number_modules")
-    
-    # Get current status from existing files
     total_existing, last_val = get_stats(base_folder)
     next_start = last_val + step
     
@@ -71,42 +72,53 @@ def generate_progressive_modules(do_commit=False):
     for i in range(files_to_generate):
         start = next_start + (i * step)
         end = start + step
-        
-        # Determine folder index: (Current total + i) divided by limit per folder
         folder_index = (total_existing + i) // files_x_folder
         target_subfolder = os.path.join(base_folder, str(folder_index))
-        
         tasks.append((start, end, target_subfolder))
 
-    print(f"📂 Base folder: {base_folder}")
-    print(f"🚀 Resuming from number: {next_start}")
-    print(f"📦 Threshold: {files_x_folder} files per subfolder")
-    print(f"🛠️  Generating {files_to_generate} new modules...")
+    # Calculate the highest value reached in this session
+    max_value_generated = next_start + ((files_to_generate - 1) * step)
 
-    # Process tasks using multi-processing
+    # Multiprocessing execution with tqdm progress bar
     with ProcessPoolExecutor(max_workers=None) as executor:
-        for result in executor.map(generate_single_module, tasks):
-            print(result)
-    
-    #Auto-push
-    if do_commit:
-        git_automatic_push(base_folder)
+        futures = [executor.submit(generate_single_module, t) for t in tasks]
+        
+        for _ in tqdm(as_completed(futures), total=len(futures), desc="Generating modules", unit="file"):
+            pass
 
-def git_automatic_push(folder):
-    # Get current status from existing files
-    _, max_val = get_stats(folder)
-    messaggio = f"added {max_val}"
+    if do_commit:
+        git_automatic_push(max_value_generated)
+
+def git_automatic_push(max_val):
+    """Performs git add, commit, and push with descriptive console updates."""
+    commit_message = f"Update: {max_val}"
     
     try:
-        print("\n--- 🤖 Inizio sincronizzazione Git ---")
+        print("\n--- 🤖 Starting Git synchronization ---")
+        
+        # Stage all changes
+        print("--- 🤖 Running: git add . ---")
         subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", messaggio], check=True)
+        
+        # Commit the changes
+        print(f"--- 🤖 Running: git commit -m '{commit_message}' ---")
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        
+        # Push to remote repository
+        print("--- 🤖 Running: git push ---")
         subprocess.run(["git", "push"], check=True)
-        print("✅ Repository aggiornato con successo!")
+        
+        print("✅ Repository updated successfully!")
+        
     except subprocess.CalledProcessError as e:
-        print(f"❌ Errore Git: {e}")
+        print(f"❌ Git error occurred: {e}")
+    except Exception as e:
+        print(f"⚠️ An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
+    #Clean window
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
