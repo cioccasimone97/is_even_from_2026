@@ -5,8 +5,8 @@ import subprocess
 import argparse
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-# Ensure these imports match your actual project structure
 from is_even_from_2026.config_generator import step, files_to_generate, files_x_folder
+import gc
 
 def generate_batch_modules(batch_params_list):
     """
@@ -14,6 +14,8 @@ def generate_batch_modules(batch_params_list):
     Uses minimum compression level (1) for maximum speed.
     """
     batch_results = []
+    
+    gc.disable()
     
     for params in batch_params_list:
         start, end, target_subfolder = params
@@ -28,13 +30,13 @@ def generate_batch_modules(batch_params_list):
             py_buffer.append(f"    if number == {i}: return {is_even}\n")
         py_content = "".join(py_buffer)
 
-        # 2. Create INNER ZIP (Fastest compression: level 1)
+        # 2. Create INNER ZIP
         inner_zip_buffer = io.BytesIO()
         with zipfile.ZipFile(inner_zip_buffer, "w", zipfile.ZIP_DEFLATED) as inner_zf:
             inner_zf.writestr(py_filename, py_content)
         inner_zip_bytes = inner_zip_buffer.getvalue()
 
-        # 3. Create OUTER ZIP (Fastest compression: level 1)
+        # 3. Create OUTER ZIP
         outer_zip_buffer = io.BytesIO()
         with zipfile.ZipFile(outer_zip_buffer, "w", zipfile.ZIP_DEFLATED) as outer_zf:
             outer_zf.writestr(inner_zip_filename, inner_zip_bytes)
@@ -43,7 +45,9 @@ def generate_batch_modules(batch_params_list):
         final_path = os.path.join(target_subfolder, inner_zip_filename)
         
         batch_results.append((final_path, final_zip_bytes))
-        
+    
+    gc.enable()
+    
     return batch_results
 
 def get_stats(base_path):
