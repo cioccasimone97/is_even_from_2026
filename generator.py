@@ -17,7 +17,7 @@ def generate_single_module(params):
     """
     Generates a Matryoshka structure entirely in RAM: 
     OuterZip -> InnerZip -> Number.py
-    Writes to disk only at the final step.
+    Returns the file path and the raw bytes for deferred disk writing.
     """
     start, end, target_subfolder = params
     base_name = f"{start}"
@@ -35,27 +35,19 @@ def generate_single_module(params):
     inner_zip_buffer = io.BytesIO()
     with zipfile.ZipFile(inner_zip_buffer, "w", zipfile.ZIP_DEFLATED) as inner_zf:
         inner_zf.writestr(py_filename, py_content)
-    
-    # Get the bytes of the inner zip
     inner_zip_bytes = inner_zip_buffer.getvalue()
 
     # --- 3. Create the OUTER ZIP in RAM ---
     outer_zip_buffer = io.BytesIO()
     with zipfile.ZipFile(outer_zip_buffer, "w", zipfile.ZIP_DEFLATED) as outer_zf:
-        # We nest the inner zip bytes into the outer zip
+        # Nest the inner zip bytes into the outer zip
         outer_zf.writestr(inner_zip_filename, inner_zip_bytes)
     
-    # Get the final bytes of the outer zip
     final_zip_bytes = outer_zip_buffer.getvalue()
-
-    # --- 4. Write to DISK (Single I/O operation) ---
-    os.makedirs(target_subfolder, exist_ok=True)
     final_path = os.path.join(target_subfolder, inner_zip_filename)
-    
-    with open(final_path, "wb") as f:
-        f.write(final_zip_bytes)
-    
-    return f"✅ Matryoshka created successfully: {final_path}"
+
+    # Return data to the main process instead of writing to disk here
+    return final_path, final_zip_bytes
 
 def get_stats(base_path):
     """
@@ -78,7 +70,7 @@ def get_stats(base_path):
     return total_files, max_num
 
 def generate_progressive_modules(do_commit=False):
-    """Main logic to manage multiprocessing generation and Git sync."""
+    """Main logic to manage parallel generation in RAM and final batch disk write."""
     base_folder = os.path.join("is_even_from_2026", "number_modules")
     total_existing, last_val = get_stats(base_folder)
     next_start = last_val + step
@@ -91,15 +83,24 @@ def generate_progressive_modules(do_commit=False):
         target_subfolder = os.path.join(base_folder, str(folder_index))
         tasks.append((start, end, target_subfolder))
 
-    # Calculate the highest value reached in this session
     max_value_generated = next_start + ((files_to_generate - 1) * step)
+    
+    # Storage for generated files in RAM
+    all_generated_files = []
 
-    # Multiprocessing execution with tqdm progress bar
+    # Parallel generation phase
     with ProcessPoolExecutor(max_workers=None) as executor:
         futures = [executor.submit(generate_single_module, t) for t in tasks]
         
-        for _ in tqdm(as_completed(futures), total=len(futures), desc="Generating modules", unit="file"):
-            pass
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Generating in RAM", unit="file"):
+            all_generated_files.append(future.result())
+
+    # --- FINAL DISK WRITE PHASE ---
+    print(f"\n💾 Writing {len(all_generated_files)} files to disk...")
+    for path, data in tqdm(all_generated_files, desc="Flushing to disk"):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
 
     if do_commit:
         git_automatic_push(max_value_generated)
