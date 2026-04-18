@@ -9,38 +9,53 @@ import argparse
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+import io
+import zipfile
+import os
+
 def generate_single_module(params):
     """
-    Generate the Matryoshka structure: Subfolder -> OuterZip -> InnerZip -> Number.py
+    Generates a Matryoshka structure entirely in RAM: 
+    OuterZip -> InnerZip -> Number.py
+    Writes to disk only at the final step.
     """
     start, end, target_subfolder = params
     base_name = f"{start}"
-    py_file = f"{base_name}.py"
-    zip_name = f"{base_name}.zip"
+    py_filename = f"{base_name}.py"
+    inner_zip_filename = f"{base_name}.zip"
     
-    # Ensure the specific numbered subfolder exists
-    os.makedirs(target_subfolder, exist_ok=True)
-    
-    final_zip_path = os.path.join(target_subfolder, zip_name)
-    
-    # --- 1. Generate the content of the .py file ---
+    # --- 1. Generate the .py file content in memory ---
     py_buffer = [f"def is_even(number: int) -> bool:\n"]
     for i in range(start, end):
-        result = "True" if i % 2 == 0 else "False"
-        py_buffer.append(f"    if number == {i}: return {result}\n")
+        is_even = "True" if i % 2 == 0 else "False"
+        py_buffer.append(f"    if number == {i}: return {is_even}\n")
     py_content = "".join(py_buffer)
 
-    # --- 2. Create the INNER ZIP in memory (RAM) ---
+    # --- 2. Create the INNER ZIP in RAM ---
     inner_zip_buffer = io.BytesIO()
     with zipfile.ZipFile(inner_zip_buffer, "w", zipfile.ZIP_DEFLATED) as inner_zf:
-        inner_zf.writestr(py_file, py_content)
+        inner_zf.writestr(py_filename, py_content)
+    
+    # Get the bytes of the inner zip
     inner_zip_bytes = inner_zip_buffer.getvalue()
 
-    # --- 3. Create the OUTER ZIP on disk and insert the inner ZIP ---
-    with zipfile.ZipFile(final_zip_path, "w", zipfile.ZIP_DEFLATED) as outer_zf:
-        outer_zf.writestr(zip_name, inner_zip_bytes)
+    # --- 3. Create the OUTER ZIP in RAM ---
+    outer_zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(outer_zip_buffer, "w", zipfile.ZIP_DEFLATED) as outer_zf:
+        # We nest the inner zip bytes into the outer zip
+        outer_zf.writestr(inner_zip_filename, inner_zip_bytes)
     
-    return f"✅ Matryoshka created: {final_zip_path}"
+    # Get the final bytes of the outer zip
+    final_zip_bytes = outer_zip_buffer.getvalue()
+
+    # --- 4. Write to DISK (Single I/O operation) ---
+    os.makedirs(target_subfolder, exist_ok=True)
+    final_path = os.path.join(target_subfolder, inner_zip_filename)
+    
+    with open(final_path, "wb") as f:
+        f.write(final_zip_bytes)
+    
+    return f"✅ Matryoshka created successfully: {final_path}"
 
 def get_stats(base_path):
     """
