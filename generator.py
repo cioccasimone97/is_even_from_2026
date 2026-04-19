@@ -24,11 +24,12 @@ def generate_batch_modules(batch_params_list):
         inner_zip_filename = f"{base_name}.zip"
         
         # 1. Generate .py content
-        py_buffer = [f"def is_even(number: int) -> bool:\n"]
-        for i in range(start, end):
-            is_even = "True" if i % 2 == 0 else "False"
-            py_buffer.append(f"    if number == {i}: return {is_even}\n")
-        py_content = "".join(py_buffer)
+        lines = ["def is_even(number: int) -> bool:\n"]
+        lines.extend([
+            f"    if number == {i}: return {i % 2 == 0}\n" 
+            for i in range(start, end)
+        ])
+        py_content = "".join(lines)
 
         # 2. Create INNER ZIP
         inner_zip_buffer = io.BytesIO()
@@ -92,10 +93,7 @@ def generate_progressive_modules(do_commit=False):
     
     # --- DYNAMIC BATCH SIZE CALCULATION ---
     cpu_count = os.cpu_count() or 1
-    # We want at least 4 batches per CPU core to keep them busy
-    # but we also want at least 1 file per batch
-    multiplier = 4
-    batch_size = max(1, len(tasks) // (cpu_count * multiplier))
+    batch_size = max(10, len(tasks) // cpu_count)
     
     # Split tasks into dynamic batches
     batches = [tasks[i:i + batch_size] for i in range(0, len(tasks), batch_size)]
@@ -103,18 +101,33 @@ def generate_progressive_modules(do_commit=False):
     all_generated_files = []
     print(f"🚀 Generation: {len(tasks)} files | CPUs: {cpu_count} | Batch Size: {batch_size}")
     
-    # --- PHASE 1: Parallel Generation in RAM ---
+    # --- PHASE 1 & 2: Concurrent Generation and Eager Writing ---
+    # We use a ProcessPool for CPU-bound generation (math/compression) 
+    # and a ThreadPool for I/O-bound disk writing.
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        # Schedule all batch generation tasks
         futures = [executor.submit(generate_batch_modules, b) for b in batches]
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Generating (RAM)", unit="batch"):
-            all_generated_files.extend(future.result())
-
-    # --- PHASE 2: Parallel Disk Write ---
-    print(f"\n💾 Flushing {len(all_generated_files)} files to disk...")
-    # Increase workers for I/O if you have a fast NVMe SSD
-    with ThreadPoolExecutor(max_workers=cpu_count * 2) as disk_executor:
-        list(tqdm(disk_executor.map(write_to_disk, all_generated_files), 
-                  total=len(all_generated_files), desc="Writing (Disk)"))
+        
+        # Initialize the progress bar based on the total number of FILES (not batches)
+        # for high-granularity visual feedback.
+        pbar = tqdm(total=len(tasks), desc="Processing", unit="file")
+        
+        # We use a ThreadPool to flush data to disk without blocking the CPU processes
+        with ThreadPoolExecutor(max_workers=min(32, cpu_count + 3)) as writer_pool:
+            for future in as_completed(futures):
+                # Retrieve the list of (path, binary_data) from the completed process
+                batch_data = future.result()
+                
+                # Helper function to perform the write and increment the progress bar immediately
+                def write_and_update(data):
+                    write_to_disk(data)
+                    pbar.update(1) # Updates the UI for every single file written
+                
+                # Map the writing task across the thread pool for the current batch.
+                # Using list() or consuming the map ensures execution before the next batch loop.
+                list(writer_pool.map(write_and_update, batch_data))
+        
+        pbar.close()
 
     if do_commit:
         git_automatic_push(max_value_generated)
