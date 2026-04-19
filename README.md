@@ -15,12 +15,15 @@ Why use the boring `% 2` operator when you can have **millions of lines** of han
 - Optional automatic Git commit & push
 
 ## 📁 Project Structure
+```text
 is_even_from_2026/
-├── init.py                 # Main package entry point (dynamic loader)
-├── number_modules/             # Generated ZIP modules (organized in subfolders)
-├── config_generator.py         # Configuration (step size, batch settings...)
-├── generator.py                # High-performance module generator
-└── prova.py                    # Performance testing script
+└──is_even_from_2026/
+    ├── init.py                     # Main package entry point (dynamic loader)
+    ├── number_modules/             # Generated ZIP modules (organized in subfolders)
+    ├── config_generator.py         # Configuration (step size, batch settings...)
+├── generator.py                    # High-performance module generator
+└── prova.py                        # Performance testing script
+```
 
 ## 🚀 How to Generate More Numbers
 ### 1. Check Disk Space ⚠️
